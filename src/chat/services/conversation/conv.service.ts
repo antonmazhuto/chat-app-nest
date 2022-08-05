@@ -12,6 +12,10 @@ import { parse } from 'cookie';
 import { AuthCacheService } from '@app/authentication/cache/authCache.service';
 import { ObservedValueOf } from 'rxjs';
 import { Message } from '@app/chat/types/message.interface';
+import { UploadEntity } from '@app/files/Upload.entity';
+import { IPaginationOptions, paginate } from 'nestjs-typeorm-paginate';
+import { S3 } from 'aws-sdk';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class ConversationNewService {
@@ -22,7 +26,10 @@ export class ConversationNewService {
     private readonly activeConversationRepository: Repository<ActiveConversationEntity>,
     @InjectRepository(MessageEntity)
     private readonly messageRepository: Repository<MessageEntity>,
+    @InjectRepository(UploadEntity)
+    private readonly uploadRepository: Repository<UploadEntity>,
     private cacheService: AuthCacheService,
+    private readonly configService: ConfigService,
   ) {}
 
   async getUserFromSocket(socket: Socket): Promise<UserEntity> {
@@ -103,9 +110,13 @@ export class ConversationNewService {
     friend: UserEntity;
     creation?: boolean;
   }): Promise<Conversation> {
-    const conversationWithThisFriend = await this.getConversationWithFriend(
-      friend.id,
+    const allConversations = await this.getAllConversations(creator.id);
+    const conversationWithThisFriend = allConversations.find((s) =>
+      s.users.some((u) => u.id === friend.id),
     );
+    // const conversationWithThisFriend = await this.getConversationWithFriend(
+    //   friend.id,
+    // );
     const conversation = conversationWithThisFriend
       ? await this.getConversationForCreation(creator.id, friend.id)
       : await this.getConversation(creator.id, friend.id);
@@ -129,10 +140,14 @@ export class ConversationNewService {
     userId: number,
     socketId: string,
   ): Promise<ActiveConversationEntity> {
-    const currentConversation = await this.getConversationWithFriend(friendId);
+    const allConversations = await this.getAllConversations(userId);
+    const currentConversation = allConversations.find((s) =>
+      s.users.some((u) => u.id === friendId),
+    );
     const activeConversation = await this.activeConversationRepository.findOne({
       userId,
     });
+
     if (activeConversation) {
       await this.activeConversationRepository.delete({
         userId,
@@ -156,20 +171,25 @@ export class ConversationNewService {
     message,
     conversationId,
     creator,
+    uploadId,
   }: {
-    message: Message['message'];
+    message: string;
     conversationId: Conversation['id'];
     creator: UserEntity;
+    uploadId: UploadEntity['id'];
   }): Promise<Message> {
-    const conversation = await this.conversationRepository.findOne(
+    const newMessage = new MessageEntity();
+    if (uploadId) {
+      newMessage.attachment = await this.uploadRepository.findOne(uploadId);
+    }
+
+    newMessage.user = creator;
+    newMessage.message = message;
+    newMessage.conversation = await this.conversationRepository.findOne(
       conversationId,
     );
 
-    return await this.messageRepository.save({
-      user: creator,
-      conversation,
-      message,
-    });
+    return await this.messageRepository.save(newMessage);
   }
 
   async getActiveUsers(
@@ -180,16 +200,57 @@ export class ConversationNewService {
     });
   }
 
-  async getMessages(conversationId: number): Promise<Message[]> {
-    return await this.messageRepository
+  async getMessages({
+    conversationId,
+    options,
+  }: {
+    conversationId: number;
+    options: IPaginationOptions;
+  }): Promise<{ messages: MessageEntity[]; count: number }> {
+    const queryBuilder = await this.messageRepository
       .createQueryBuilder('message')
+      .leftJoinAndSelect('message.attachment', 'att')
       .innerJoinAndSelect('message.user', 'user')
       .where('message.conversation.id =:conversationId', { conversationId })
-      .orderBy('message.createdAt', 'ASC')
-      .getMany();
+      .orderBy('message.createdAt', 'DESC');
+
+    const paginatedMessages = await paginate<MessageEntity>(
+      queryBuilder,
+      options,
+    );
+    return {
+      messages: paginatedMessages.items.reverse(),
+      count: paginatedMessages.meta.totalItems,
+    };
   }
 
   async leaveConversation(socketId: string): Promise<DeleteResult> {
     return await this.activeConversationRepository.delete({ socketId });
+  }
+
+  async deleteMessage(messageId: number) {
+    const message = await this.messageRepository
+      .createQueryBuilder('message')
+      .leftJoinAndSelect('message.attachment', 'att')
+      .where('message.id = :messageId', { messageId })
+      .getOne();
+    const messageAttachment = message.attachment;
+    console.log(messageAttachment);
+
+    await this.uploadRepository.delete({ id: messageAttachment.id });
+
+    await this.messageRepository.delete({ id: messageId });
+
+    const s3 = new S3();
+    for (const file of messageAttachment.files) {
+      await s3
+        .deleteObject({
+          Bucket: this.configService.get('AWS_PUBLIC_BUCKET_NAME'),
+          Key: file.key,
+        })
+        .promise();
+    }
+
+    // return await this.messageRepository.delete({ id: messageId });
   }
 }

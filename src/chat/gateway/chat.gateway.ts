@@ -13,6 +13,10 @@ import { UserEntity } from '@app/user/user.entity';
 import { Message } from '@app/chat/types/message.interface';
 import { ConversationNewService } from '@app/chat/services/conversation/conv.service';
 import { Conversation } from '@app/chat/types/conversation.interface';
+import { FileDto } from '@app/user/dto/file.dto';
+import { UploadEntity } from '@app/files/Upload.entity';
+import { PaginationParams } from '@app/common/paginations-params';
+import { IPaginationOptions } from 'nestjs-typeorm-paginate';
 
 @WebSocketGateway({
   cors: { origin: ['http://localhost:3001'], credentials: true },
@@ -61,6 +65,16 @@ export class ChatGateway
     return this.server.to(socket.id).emit('allConversations', conversations);
   }
 
+  async getLastActiveConversation(socket: Socket, userId: number) {
+    await this.conversationService
+      .getActiveConversation(userId)
+      .then((activeConversation) => {
+        this.server
+          .to(socket.id)
+          .emit('activeConversation', activeConversation);
+      });
+  }
+
   @SubscribeMessage('createConversation')
   async createConversation(socket: Socket, friend: UserEntity) {
     const author = await this.conversationService.getUserFromSocket(socket);
@@ -75,18 +89,31 @@ export class ChatGateway
         );
       });
 
-    await this.joinConversation(socket, friend.id);
+    await this.joinConversation(socket, { friendId: friend.id });
   }
 
   @SubscribeMessage('joinConversation')
-  async joinConversation(socket: Socket, friendId: number) {
+  async joinConversation(
+    socket: Socket,
+    data: {
+      friendId: number;
+      // options?: IPaginationOptions;
+    },
+  ) {
+    const { friendId } = data;
     const author = await this.conversationService.getUserFromSocket(socket);
     await this.conversationService
       .joinConversation(friendId, author.id, socket.id)
       .then((activeConversation) => {
         this.conversationService
-          .getMessages(activeConversation.conversationId)
-          .then((messages: Message[]) => {
+          .getMessages({
+            conversationId: activeConversation.conversationId,
+            options: {
+              page: 1,
+              limit: 4,
+            },
+          })
+          .then((messages) => {
             this.server.to(socket.id).emit('messages', messages);
           });
       });
@@ -106,10 +133,11 @@ export class ChatGateway
     data: {
       conversationId: Conversation['id'];
       message: string;
-      file: File;
+      uploadId: UploadEntity['id'];
     },
   ) {
-    const { conversationId, message } = data;
+    const { conversationId, message, uploadId } = data;
+
     if (!conversationId) return null;
 
     const creator = await this.conversationService.getUserFromSocket(socket);
@@ -118,6 +146,7 @@ export class ChatGateway
       message,
       conversationId,
       creator,
+      uploadId,
     });
 
     const activeConversations = await this.conversationService.getActiveUsers(
@@ -131,6 +160,29 @@ export class ChatGateway
     });
   }
 
+  @SubscribeMessage('deleteMessage')
+  async handleDeleteMessage(socket: Socket, messageId: number) {
+    await this.conversationService.deleteMessage(messageId);
+
+    const author = await this.conversationService.getUserFromSocket(socket);
+
+    await this.conversationService
+      .getActiveConversation(author.id)
+      .then((activeConversation) => {
+        this.conversationService
+          .getMessages({
+            conversationId: activeConversation.conversationId,
+            options: {
+              page: 1,
+              limit: 4,
+            },
+          })
+          .then((messages) => {
+            this.server.to(socket.id).emit('messages', messages);
+          });
+      });
+  }
+
   @SubscribeMessage('leaveConversation')
   async leaveConversation(socket: Socket) {
     const author = await this.conversationService.getUserFromSocket(socket);
@@ -142,11 +194,5 @@ export class ChatGateway
           .to(socket.id)
           .emit('activeConversation', activeConversation);
       });
-  }
-
-  @SubscribeMessage('uploadFile')
-  async uploadFile(socket: Socket, file: any) {
-    console.log(socket);
-    console.log(file);
   }
 }

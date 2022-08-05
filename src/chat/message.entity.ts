@@ -7,6 +7,7 @@ import {
 } from 'typeorm';
 import { ConversationEntity } from '@app/chat/conversation.entity';
 import { UserEntity } from '@app/user/user.entity';
+import { UploadEntity } from '@app/files/Upload.entity';
 
 @Entity('message')
 export class MessageEntity {
@@ -24,6 +25,12 @@ export class MessageEntity {
     (conversationEntity) => conversationEntity.messages,
   )
   conversation: ConversationEntity;
+
+  @ManyToOne(() => UploadEntity, (upload) => upload.id, {
+    cascade: true,
+    onDelete: 'CASCADE',
+  })
+  attachment: UploadEntity;
 
   @CreateDateColumn()
   createdAt: Date;

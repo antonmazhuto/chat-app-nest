@@ -6,9 +6,13 @@ import { ActiveConversationEntity } from '@app/chat/active-conversation.entity';
 import { MessageEntity } from '@app/chat/message.entity';
 import { AuthCacheService } from '@app/authentication/cache/authCache.service';
 import { UserModule } from '@app/user/user.module';
-import { APP_GUARD } from '@nestjs/core';
-import { ChatWsGuard } from '@app/chat/guards/chat-ws.guard';
 import { ConversationNewService } from '@app/chat/services/conversation/conv.service';
+import { ChatController } from '@app/chat/chat.controller';
+import { UploadEntity } from '@app/files/Upload.entity';
+import { ConfigModule } from '@nestjs/config';
+import { ChatService } from '@app/chat/services/chat.service';
+import { FilesService } from '@app/files/files.service';
+import { FilesModule } from '@app/files/files.module';
 
 @Module({
   imports: [
@@ -16,18 +20,19 @@ import { ConversationNewService } from '@app/chat/services/conversation/conv.ser
       ConversationEntity,
       ActiveConversationEntity,
       MessageEntity,
+      UploadEntity,
     ]),
     UserModule,
+    ConfigModule,
+    FilesModule,
   ],
+  controllers: [ChatController],
   providers: [
     ChatGateway,
     ConversationNewService,
     // ConversationService,
     AuthCacheService,
-    {
-      provide: APP_GUARD,
-      useClass: ChatWsGuard,
-    },
+    ChatService,
   ],
 })
 export class ChatModule {}
