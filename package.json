@@ -28,7 +28,7 @@
     "@nestjs/core": "^7.5.5",
     "@nestjs/mapped-types": "*",
     "@nestjs/platform-express": "^7.5.5",
-    "@nestjs/platform-socket.io": "^7.6.18",
+    "@nestjs/platform-socket.io": "^9.0.8",
     "@nestjs/swagger": "^5.0.8",
     "@nestjs/typeorm": "^7.1.5",
     "@nestjs/websockets": "^7.6.18",
@@ -46,7 +46,8 @@
     "rxjs": "^7.2.0",
     "socket.io": "^4.5.1",
     "swagger-ui-express": "^4.4.0",
-    "typeorm": "^0.2.45"
+    "typeorm": "^0.2.45",
+    "yarn": "^1.22.19"
   },
   "devDependencies": {
     "@nestjs/cli": "^8.0.0",
