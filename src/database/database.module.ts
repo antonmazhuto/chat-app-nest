@@ -20,11 +20,11 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         synchronize: true,
         //
         // ssl: { rejectUnauthorized: false },
-        // extra: {
-        //   ssl: {
-        //     rejectUnauthorized: false,
-        //   },
-        // },
+        extra: {
+          ssl: {
+            rejectUnauthorized: false,
+          },
+        },
       }),
     }),
   ],
