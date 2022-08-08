@@ -9,12 +9,15 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         config: {
-          // host: configService.get('REDIS_HOST'),
-          // port: configService.get('REDIS_PORT'),
-          // username: configService.get('REDIS_USER'),
-          // password: configService.get('REDIS_PASSWORD'),
-          // uri: configService.get('REDIS_URI'),
-          url: 'redis://localhost:6379',
+          host: configService.get('REDIS_HOST'),
+          port: configService.get('REDIS_PORT'),
+          username: configService.get('REDIS_USER'),
+          password: configService.get('REDIS_PASSWORD'),
+          url: configService.get('REDIS_URI'),
+          // url: 'redis://localhost:6379',
+          tls: {
+            rejectUnauthorized: false,
+          },
         },
       }),
     }),
