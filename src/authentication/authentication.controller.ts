@@ -22,6 +22,8 @@ import { ApiBody, ApiOkResponse, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SignInUserDto } from './dto/signIn.dto';
 import { RefreshTokenDto } from './dto/refreshToken.dto';
 import { SignInResponse } from './dto/signInResponse.dto';
+import TokenVerificationDto from '@app/authentication/dto/tokenVerificationDto';
+import { GoogleAuthenticationService } from '@app/authentication/googleAuthentication.service';
 
 @Controller('auth')
 @ApiTags('auth')
@@ -29,6 +31,7 @@ export class AuthenticationController {
   constructor(
     private readonly authenticationService: AuthenticationService,
     private readonly authCacheService: AuthCacheService,
+    private readonly googleAuthenticationService: GoogleAuthenticationService,
   ) {}
 
   @Post('sign-up')
@@ -64,6 +67,23 @@ export class AuthenticationController {
     return { accessTokenExpireDate }; // на стороне клиента выполнять рефреш незадолго до экспирации, для чего потребуется знать время жизни
   }
 
+  @Post('google-authentication')
+  @Public()
+  async authenticate(
+    @Body() tokenData: TokenVerificationDto,
+    @Req() request: any,
+  ) {
+    const { accessTokenCookie, refreshTokenCookie, accessTokenExpireDate } =
+      await this.googleAuthenticationService.authenticate(tokenData.token);
+
+    request.res.setHeader('Set-Cookie', [
+      accessTokenCookie,
+      refreshTokenCookie,
+    ]);
+
+    return { accessTokenExpireDate };
+  }
+
   @ApiResponse({
     description: 'Log Out successfully',
     status: 204,
@@ -74,6 +94,7 @@ export class AuthenticationController {
     const userId = await this.authCacheService.getUserIdByAccessToken(
       request?.cookies.Authentication,
     );
+
     const { accessTokenCookie, refreshTokenCookie } =
       await this.authenticationService.logout(parseInt(userId));
 

@@ -47,13 +47,16 @@ export class UserEntity {
   })
   public location?: Location;
 
-  @Column({ select: false })
+  @Column({ select: false, nullable: true })
   password: string;
 
   @BeforeInsert()
   async hashPassword() {
     this.password = await hash(this.password, 10);
   }
+
+  @Column({ default: false })
+  public isRegisteredWithGoogle: boolean;
 
   @ManyToMany(
     () => ConversationEntity,
